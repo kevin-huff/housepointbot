@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>House Leaderboard</title>
+    <link href="/dist/tailwind.css" rel="stylesheet">
+    <script src="/socket.io/socket.io.js"></script>
+    <script type="text/javascript">
+        document.addEventListener('DOMContentLoaded', function() {
+            var socket = io();
+            var tickerElement = document.querySelector('.animate-ticker');
+            var housesMap = new Map();
+            const elementWidth = tickerElement.offsetWidth;
+            const notificationQueue = [];
+
+            // Create dynamic keyframes
+            const styleSheet = document.createElement('style');
+            styleSheet.type = 'text/css';
+            styleSheet.innerHTML = `
+            @keyframes ticker {
+                0% { transform: translateX(100vw); }
+                100% { transform: translateX(-${elementWidth}px); }
+            }
+            `;
+            document.head.appendChild(styleSheet);
+
+            // Apply the animation
+            tickerElement.style.animation = 'ticker 10s linear infinite';
+            // Prepopulate housesMap with existing houses in the DOM
+            var existingHouses = document.querySelectorAll('.inline-block.px-8.text-2xl');
+            console.log('Existing houses: ' + existingHouses.length);
+            existingHouses.forEach(function(houseElement) {
+                var houseName = houseElement.id;
+                housesMap.set(houseName, houseElement);
+            });
+
+            socket.on('connect', function() {
+                console.log('Connected to server');
+            });
+
+            socket.on('disconnect', function() {
+                console.log('Disconnected from server');
+            });
+
+            socket.on('updateLeaderboard', function(leaderboard) {
+                console.log('Leaderboard updated');
+                console.log(leaderboard);
+
+                leaderboard.forEach(function(house) {
+                    if (housesMap.has(house.house_name)) {
+                        updateHouse(house);
+                    } else {
+                        addHouse(house);
+                    }
+                });
+
+                removeNonexistentHouses(leaderboard);
+            });
+
+            function updateHouse(house) {
+                var houseElement = housesMap.get(house.house_name);
+                houseElement.textContent = house.house_name + ': ' + house.member_count + ' members | ' + house.total_points + ' points';
+            }
+
+            function addHouse(house) {
+                var houseElement = document.createElement('div');
+                houseElement.className = 'inline-block px-8 text-2xl';
+                houseElement.id = house.house_name;
+                houseElement.textContent = house.house_name + ': ' + house.member_count + ' members | ' + house.total_points + ' points';
+                tickerElement.appendChild(houseElement);
+                housesMap.set(house.house_name, houseElement);
+            }
+
+            function removeNonexistentHouses(leaderboard) {
+                housesMap.forEach(function(houseElement, houseName) {
+                    var houseExists = leaderboard.some(function(house) {
+                        return houseName === house.house_name;
+                    });
+                    if (!houseExists) {
+                        houseElement.remove();
+                        housesMap.delete(houseName);
+                    }
+                });
+            }
+
+            socket.on('notification', function(text) {
+                showNotification(text);
+                console.log('Notification received: ' + text)
+            });
+
+            function showNotification(text) {
+                const notification = document.getElementById('notification');
+
+                // Add the new notification to the queue
+                notificationQueue.push(text);
+
+                // If there is no active notification, display the new notification
+                if (!notification.classList.contains('active')) {
+                    displayNextNotification();
+                }
+            }
+
+            function displayNextNotification() {
+                const notification = document.getElementById('notification');
+
+                // If there are no more notifications in the queue, hide the notification element
+                if (notificationQueue.length === 0) {
+                    notification.style.visibility = 'hidden';
+                    notification.style.opacity = '0';
+                    notification.classList.remove('active');
+                    return;
+                }
+
+                // Get the next notification from the queue
+                const nextNotification = notificationQueue.shift();
+
+                // Update the notification text
+                notification.children[0].textContent = nextNotification;
+
+                // Show the notification
+                notification.style.visibility = 'visible';
+                notification.style.opacity = '1';
+                notification.classList.add('active');
+
+                // Schedule the next notification to be displayed after 5 seconds
+                setTimeout(displayNextNotification, 5000);
+            }
+        });
+    </script>
+</head>
+<body class="bg-white-1000 text-white font-eczar">
+    <div id="notification" class="fixed top-5 left-5 p-5 bg-gray-700 text-white rounded-lg shadow-lg z-50 opacity-0 transition-opacity duration-500 ease-linear invisible">
+        <p class="m-0 p-0 text-lg">Your notification text goes here</p>
+    </div>
+    <div class="fixed bottom-0 left-0 w-full overflow-hidden h-16 bg-gray-700 pl-full border-t-2 border-gray-100">
+        <div class="inline-block h-16 leading-16 whitespace-nowrap pr-full animate-ticker duration-30000 linear infinite">
+            <% leaderboard.forEach(function(house) { %>
+                <div class="inline-block px-8 text-2xl" id="<%= house.house_name %>">House <%= house.house_name %>: <%= house.member_count %> members | <%= house.total_points %> points</div>
+            <% }); %>
+        </div>
+    </div>
+</body>
+</html>
